@@ -12,7 +12,7 @@ export const SocketProvider = ({ children }) => {
   useEffect(() => {
     if (!isAuthenticated || !user) return;
 
-    const socketUrl = import.meta.env.VITE_API_URL || '/';
+    const socketUrl = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:5000' : '/');
 
     const socket = io(socketUrl, {
       withCredentials: true,
