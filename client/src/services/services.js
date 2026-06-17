@@ -54,6 +54,8 @@ export const adminService = {
   toggleUserStatus: (id) => api.put(`/admin/users/${id}/status`),
   updateUserRole: (id, role) => api.put(`/admin/users/${id}/role`, { role }),
   getStaff: () => api.get('/admin/staff'),
+  assignStaff: (id, staffId) => api.put(`/admin/complaints/${id}/assign`, { staffId }),
+  verifyCompletion: (id, action, notes) => api.put(`/admin/complaints/${id}/verify`, { action, notes }),
   generateReport: (data) => api.post('/admin/reports/generate', data),
   getReports: () => api.get('/admin/reports'),
   getDepartments: () => api.get('/admin/departments'),
@@ -61,4 +63,13 @@ export const adminService = {
   updateDepartment: (id, data) => api.put(`/admin/departments/${id}`, data),
   getAuditLogs: (params) => api.get('/admin/audit-logs', { params }),
   bulkUpdate: (data) => api.put('/admin/complaints/bulk', data),
+};
+
+// ─── Staff ───────────────────────────────────────────────────────────
+export const staffService = {
+  getAssignedComplaints: (params) => api.get('/staff/complaints', { params }),
+  acceptComplaint: (id) => api.put(`/staff/complaints/${id}/accept`),
+  startWork: (id) => api.put(`/staff/complaints/${id}/start`),
+  completeWork: (id, formData) =>
+    api.put(`/staff/complaints/${id}/complete`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
 };

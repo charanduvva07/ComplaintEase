@@ -24,9 +24,21 @@ const adminLinks = [
   { to: '/admin/audit-logs', icon: Activity, label: 'Audit Logs' },
 ];
 
+const staffLinks = [
+  { to: '/staff', icon: LayoutDashboard, label: 'Staff Dashboard', end: true },
+  { to: '/staff/complaints', icon: ClipboardList, label: 'My Assignments' },
+];
+
 const Sidebar = ({ isOpen, onClose }) => {
   const { user, isAdmin } = useAuth();
-  const links = isAdmin ? [...adminLinks, { divider: true }, ...userLinks.slice(2)] : userLinks;
+  const isStaffOnly = user?.role === 'staff';
+
+  let links = userLinks;
+  if (isAdmin) {
+    links = [...adminLinks, { divider: true }, ...userLinks.slice(2)];
+  } else if (isStaffOnly) {
+    links = [...staffLinks, { divider: true }, ...userLinks.slice(2)];
+  }
 
   const sidebarContent = (
     <div className="flex flex-col h-full">
@@ -44,7 +56,9 @@ const Sidebar = ({ isOpen, onClose }) => {
           </div>
           <div>
             <span className="font-bold text-base gradient-text">ComplaintEase</span>
-            <p className="text-xs text-muted">{isAdmin ? 'Admin Panel' : 'User Portal'}</p>
+            <p className="text-xs text-muted">
+              {isAdmin ? 'Admin Panel' : isStaffOnly ? 'Staff Portal' : 'User Portal'}
+            </p>
           </div>
         </div>
         <button onClick={onClose} className="btn btn-ghost btn-icon lg:hidden">

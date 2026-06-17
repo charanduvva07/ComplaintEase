@@ -46,7 +46,7 @@ const complaintSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['Submitted', 'Under Review', 'Assigned', 'In Progress', 'Resolved', 'Closed', 'Rejected'],
+      enum: ['Submitted', 'Under Review', 'Assigned', 'Accepted', 'In Progress', 'Completed', 'Verified', 'Resolved', 'Closed', 'Rejected'],
       default: 'Submitted',
     },
     submittedBy: {
@@ -59,6 +59,22 @@ const complaintSchema = new mongoose.Schema(
       ref: 'User',
       default: null,
     },
+    assignedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
+    assignedAt: Date,
+    startedAt: Date,
+    completedAt: Date,
+    verifiedAt: Date,
+    verificationNotes: { type: String, default: '' },
+    completionProofImages: [
+      {
+        url: String,
+        publicId: String,
+      },
+    ],
     images: [
       {
         url: String,

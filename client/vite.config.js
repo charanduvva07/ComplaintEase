@@ -19,11 +19,11 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:5000',
+        target: 'http://127.0.0.1:5000',
         changeOrigin: true,
       },
       '/socket.io': {
-        target: 'http://localhost:5000',
+        target: 'http://127.0.0.1:5000',
         changeOrigin: true,
         ws: true,
       },
@@ -33,24 +33,7 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: false,
-    minify: 'esbuild',
-    rollupOptions: {
-      output: {
-        // Manual code-splitting chunks for better caching
-        manualChunks: {
-          'vendor-react':   ['react', 'react-dom', 'react-router-dom'],
-          'vendor-query':   ['@tanstack/react-query'],
-          'vendor-framer':  ['framer-motion'],
-          'vendor-charts':  ['recharts'],
-          'vendor-forms':   ['react-hook-form', '@hookform/resolvers', 'zod'],
-          'vendor-socket':  ['socket.io-client'],
-          'vendor-ui':      ['lucide-react', 'react-hot-toast'],
-        },
-      },
-    },
-    // Target modern browsers for smaller bundle
     target: 'es2020',
-    // Warn if any chunk exceeds 800KB
     chunkSizeWarningLimit: 800,
   },
 

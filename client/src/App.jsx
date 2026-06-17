@@ -23,6 +23,10 @@ const ComplaintDetail     = lazy(() => import('./pages/user/ComplaintDetail'));
 const MyComplaints        = lazy(() => import('./pages/user/MyComplaints'));
 const ProfilePage         = lazy(() => import('./pages/user/ProfilePage'));
 
+const StaffDashboard      = lazy(() => import('./pages/staff/StaffDashboard'));
+const StaffComplaints     = lazy(() => import('./pages/staff/StaffComplaints'));
+const StaffComplaintDetail = lazy(() => import('./pages/staff/StaffComplaintDetail'));
+
 const AdminDashboard      = lazy(() => import('./pages/admin/AdminDashboard'));
 const AdminComplaints     = lazy(() => import('./pages/admin/AdminComplaints'));
 const AdminUsers          = lazy(() => import('./pages/admin/AdminUsers'));
@@ -128,6 +132,13 @@ const App = () => (
                     <Route path="/complaints/new"        element={<SubmitComplaint />} />
                     <Route path="/complaints/:id"        element={<ComplaintDetail />} />
                     <Route path="/profile"              element={<ProfilePage />} />
+                  </Route>
+
+                  {/* Staff Routes */}
+                  <Route element={<DashboardLayout requireStaff={true} />}>
+                    <Route path="/staff"                element={<StaffDashboard />} />
+                    <Route path="/staff/complaints"     element={<StaffComplaints />} />
+                    <Route path="/staff/complaints/:id" element={<StaffComplaintDetail />} />
                   </Route>
 
                   {/* Admin Routes */}

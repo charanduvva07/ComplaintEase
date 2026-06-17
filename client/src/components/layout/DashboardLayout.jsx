@@ -4,8 +4,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import Navbar from './Navbar';
 import Sidebar from './Sidebar';
 
-const DashboardLayout = ({ requireAdmin = false }) => {
-  const { isAuthenticated, isAdmin, loading } = useAuth();
+const DashboardLayout = ({ requireAdmin = false, requireStaff = false }) => {
+  const { isAuthenticated, isAdmin, isStaff, loading } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   if (loading) {
@@ -29,6 +29,10 @@ const DashboardLayout = ({ requireAdmin = false }) => {
   }
 
   if (requireAdmin && !isAdmin) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  if (requireStaff && !isStaff) {
     return <Navigate to="/dashboard" replace />;
   }
 

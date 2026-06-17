@@ -15,6 +15,8 @@ const {
   getAuditLogs,
   bulkUpdateComplaints,
   getStaff,
+  assignStaff,
+  verifyCompletion,
 } = require('../controllers/adminController');
 const { protect, authorize } = require('../middlewares/auth');
 
@@ -24,6 +26,8 @@ router.get('/dashboard', getDashboard);
 router.get('/analytics', getAnalytics);
 
 router.get('/complaints', getAllComplaints);
+router.put('/complaints/:id/assign', assignStaff);
+router.put('/complaints/:id/verify', verifyCompletion);
 router.put('/complaints/bulk', authorize('admin'), bulkUpdateComplaints);
 
 router.get('/users', authorize('admin'), getAllUsers);

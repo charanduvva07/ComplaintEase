@@ -265,6 +265,7 @@ const getAnalytics = asyncHandler(async (req, res) => {
     topLocations,
     userGrowth,
     avgResolutionByDept,
+    staffPerformance,
   ] = await Promise.all([
     // Monthly complaint trend
     Complaint.aggregate([
@@ -341,6 +342,24 @@ const getAnalytics = asyncHandler(async (req, res) => {
       { $project: { name: '$dept.name', avgTime: 1, count: 1 } },
       { $sort: { avgTime: 1 } },
     ]),
+    // Staff performance (tasks completed and avg rating)
+    Complaint.aggregate([
+      { $match: { assignedTo: { $ne: null }, status: { $in: ['Resolved', 'Closed', 'Completed', 'Verified'] } } },
+      {
+        $group: {
+          _id: '$assignedTo',
+          completedTasks: { $sum: 1 },
+          avgRating: { $avg: '$rating.score' },
+        },
+      },
+      {
+        $lookup: { from: 'users', localField: '_id', foreignField: '_id', as: 'staff' },
+      },
+      { $unwind: { path: '$staff', preserveNullAndEmptyArrays: true } },
+      { $project: { name: '$staff.name', completedTasks: 1, avgRating: 1 } },
+      { $sort: { completedTasks: -1 } },
+      { $limit: 10 },
+    ]),
   ]);
 
   res.json({
@@ -353,6 +372,7 @@ const getAnalytics = asyncHandler(async (req, res) => {
     topLocations,
     userGrowth,
     avgResolutionByDept,
+    staffPerformance,
   });
 });
 
@@ -523,6 +543,107 @@ const getStaff = asyncHandler(async (req, res) => {
   res.json({ success: true, staff });
 });
 
+// @desc    Assign staff to a complaint
+// @route   PUT /api/admin/complaints/:id/assign
+// @access  Private (Admin)
+const assignStaff = asyncHandler(async (req, res) => {
+  const { staffId } = req.body;
+  const complaint = await Complaint.findById(req.params.id);
+
+  if (!complaint) {
+    res.status(404);
+    throw new Error('Complaint not found');
+  }
+
+  const staff = await User.findById(staffId);
+  if (!staff || !['staff', 'admin'].includes(staff.role)) {
+    res.status(400);
+    throw new Error('Invalid staff member selected');
+  }
+
+  complaint.assignedTo = staffId;
+  complaint.assignedBy = req.user._id;
+  complaint.assignedAt = new Date();
+  complaint.status = 'Assigned';
+
+  complaint.timeline.push({
+    status: 'Assigned',
+    message: `Complaint assigned to ${staff.name}`,
+    updatedBy: req.user._id
+  });
+
+  await complaint.save();
+
+  const io = req.app.get('io');
+  if (io) {
+    io.to(complaint.submittedBy.toString()).emit('complaint:status_updated', {
+      complaintId: complaint._id,
+      status: 'Assigned',
+      message: `Your complaint has been assigned to a technician`
+    });
+
+    if (staffId) {
+      io.to(staffId.toString()).emit('staff:new_assignment', {
+        complaintId: complaint._id,
+        title: complaint.title
+      });
+    }
+  }
+
+  res.json({ success: true, complaint });
+});
+
+// @desc    Verify completed work
+// @route   PUT /api/admin/complaints/:id/verify
+// @access  Private (Admin)
+const verifyCompletion = asyncHandler(async (req, res) => {
+  const { action, notes } = req.body; // action: 'verify' or 'rework'
+  const complaint = await Complaint.findById(req.params.id);
+
+  if (!complaint) {
+    res.status(404);
+    throw new Error('Complaint not found');
+  }
+
+  if (complaint.status !== 'Completed') {
+    res.status(400);
+    throw new Error('Complaint is not in Completed status');
+  }
+
+  const io = req.app.get('io');
+
+  if (action === 'verify') {
+    complaint.status = 'Verified';
+    complaint.verifiedAt = new Date();
+    complaint.verificationNotes = notes || 'Verified by Admin';
+    complaint.timeline.push({
+      status: 'Verified',
+      message: complaint.verificationNotes,
+      updatedBy: req.user._id
+    });
+  } else if (action === 'rework') {
+    complaint.status = 'In Progress';
+    complaint.verificationNotes = notes || 'Rework requested by Admin';
+    complaint.timeline.push({
+      status: 'In Progress',
+      message: `Rework Requested: ${complaint.verificationNotes}`,
+      updatedBy: req.user._id
+    });
+    if (complaint.assignedTo) {
+       io.to(complaint.assignedTo.toString()).emit('staff:rework_requested', {
+         complaintId: complaint._id,
+         notes: complaint.verificationNotes
+       });
+    }
+  } else {
+    res.status(400);
+    throw new Error('Invalid verification action');
+  }
+
+  await complaint.save();
+  res.json({ success: true, complaint });
+});
+
 module.exports = {
   getDashboard,
   getAllComplaints,
@@ -538,4 +659,6 @@ module.exports = {
   getAuditLogs,
   bulkUpdateComplaints,
   getStaff,
+  assignStaff,
+  verifyCompletion,
 };

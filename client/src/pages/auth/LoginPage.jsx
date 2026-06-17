@@ -185,6 +185,7 @@ const LoginPage = () => {
             <p className="font-medium mb-2" style={{ color: 'rgb(99,102,241)' }}>Demo Credentials:</p>
             <div className="space-y-1 text-muted">
               <p>👑 Admin: admin@complaintease.com / Admin@123456</p>
+              <p>🔧 Staff: john.staff@complaintease.com / Staff@123456</p>
               <p>👤 User: bob.wilson@gmail.com / User@123456</p>
             </div>
           </div>

@@ -1,4 +1,8 @@
 const mongoose = require('mongoose');
+const dns = require('dns');
+
+// Fix for Node 18+ DNS resolution issues with MongoDB Atlas on Windows
+dns.setDefaultResultOrder('ipv4first');
 
 const connectDB = async () => {
   try {

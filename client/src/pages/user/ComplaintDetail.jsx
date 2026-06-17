@@ -6,7 +6,7 @@ import {
   ChevronLeft, MapPin, Calendar, Building2, User,
   AlertTriangle, Star, Send, Paperclip, Eye, Clock
 } from 'lucide-react';
-import { complaintService } from '../../services/services';
+import { complaintService, adminService } from '../../services/services';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSocket } from '../../contexts/SocketContext';
 import StatusTimeline from '../../components/ui/StatusTimeline';
@@ -19,12 +19,15 @@ import toast from 'react-hot-toast';
 
 const ComplaintDetail = () => {
   const { id } = useParams();
-  const { user, isStaff } = useAuth();
+  const { user, isAdmin } = useAuth();
   const { joinComplaint, leaveComplaint, onEvent } = useSocket();
   const queryClient = useQueryClient();
   const [showRating, setShowRating] = useState(false);
   const [rating, setRating] = useState(0);
   const [feedback, setFeedback] = useState('');
+  
+  const [selectedStaff, setSelectedStaff] = useState('');
+  const [verificationNotes, setVerificationNotes] = useState('');
   const navigate = useNavigate();
 
   const { data, isLoading, error } = useQuery({
@@ -36,6 +39,12 @@ const ComplaintDetail = () => {
     queryKey: ['comments', id],
     queryFn: () => complaintService.getComments(id),
     refetchInterval: 30000,
+  });
+
+  const { data: staffData } = useQuery({
+    queryKey: ['staffList'],
+    queryFn: () => adminService.getStaff(),
+    enabled: isAdmin,
   });
 
   // Join complaint room for live updates
@@ -55,6 +64,24 @@ const ComplaintDetail = () => {
     onSuccess: () => {
       toast.success('Thank you for your feedback!');
       setShowRating(false);
+      queryClient.invalidateQueries(['complaint', id]);
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const assignMutation = useMutation({
+    mutationFn: (staffId) => adminService.assignStaff(id, staffId),
+    onSuccess: () => {
+      toast.success('Staff assigned successfully');
+      queryClient.invalidateQueries(['complaint', id]);
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const verifyMutation = useMutation({
+    mutationFn: ({ action, notes }) => adminService.verifyCompletion(id, action, notes),
+    onSuccess: () => {
+      toast.success('Verification status updated');
       queryClient.invalidateQueries(['complaint', id]);
     },
     onError: (err) => toast.error(err.message),
@@ -111,6 +138,65 @@ const ComplaintDetail = () => {
             <Eye size={12} /> {complaint.viewCount || 0} views
           </div>
         </div>
+
+        {/* Admin Actions */}
+        {isAdmin && (
+          <div className="mb-6 space-y-4">
+            {['Submitted', 'Under Review'].includes(complaint.status) && (
+              <div className="p-4 rounded-xl border border-indigo-500/20 bg-indigo-500/5 flex items-end gap-4 flex-wrap">
+                <div className="flex-1 min-w-[200px]">
+                  <label className="block text-sm font-medium mb-1">Assign to Staff</label>
+                  <select 
+                    value={selectedStaff} 
+                    onChange={(e) => setSelectedStaff(e.target.value)}
+                    className="input"
+                  >
+                    <option value="">Select a technician...</option>
+                    {staffData?.staff?.map(s => (
+                      <option key={s._id} value={s._id}>{s.name} ({s.department?.name || 'General'})</option>
+                    ))}
+                  </select>
+                </div>
+                <button 
+                  onClick={() => assignMutation.mutate(selectedStaff)}
+                  disabled={!selectedStaff || assignMutation.isPending}
+                  className="btn btn-primary"
+                >
+                  Assign
+                </button>
+              </div>
+            )}
+
+            {complaint.status === 'Completed' && (
+              <div className="p-4 rounded-xl border border-green-500/20 bg-green-500/5 space-y-3">
+                <h3 className="font-bold text-green-400">Verify Work Completion</h3>
+                <textarea 
+                  className="input"
+                  placeholder="Verification or rework notes..."
+                  value={verificationNotes}
+                  onChange={(e) => setVerificationNotes(e.target.value)}
+                  rows={2}
+                />
+                <div className="flex gap-2">
+                  <button 
+                    onClick={() => verifyMutation.mutate({ action: 'verify', notes: verificationNotes })}
+                    disabled={verifyMutation.isPending}
+                    className="btn btn-sm bg-green-600 hover:bg-green-700 text-white"
+                  >
+                    Verify & Resolve
+                  </button>
+                  <button 
+                    onClick={() => verifyMutation.mutate({ action: 'rework', notes: verificationNotes })}
+                    disabled={verifyMutation.isPending || !verificationNotes}
+                    className="btn btn-sm bg-red-600 hover:bg-red-700 text-white"
+                  >
+                    Request Rework
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Meta */}
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4 text-sm">
@@ -172,6 +258,20 @@ const ComplaintDetail = () => {
           </div>
         )}
 
+        {/* Completion Proofs */}
+        {complaint.completionProofImages?.length > 0 && (
+          <div className="mt-4 p-4 rounded-xl border border-green-500/20 bg-green-500/5">
+            <p className="text-xs font-medium text-green-400 mb-2 uppercase tracking-wider">Completion Proof Images</p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {complaint.completionProofImages.map((img, i) => (
+                <a key={i} href={img.url} target="_blank" rel="noreferrer">
+                  <img src={img.url} alt="Proof" className="w-full h-24 object-cover rounded-lg hover:opacity-80 transition-opacity" />
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Admin notes */}
         {complaint.adminNotes && (
           <div className="mt-4 p-4 rounded-xl" style={{ background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.15)' }}>
@@ -185,6 +285,14 @@ const ComplaintDetail = () => {
           <div className="mt-4 p-4 rounded-xl" style={{ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.2)' }}>
             <p className="text-xs font-medium uppercase tracking-wider mb-1" style={{ color: '#22c55e' }}>Resolution Notes</p>
             <p className="text-sm">{complaint.resolutionNotes}</p>
+          </div>
+        )}
+
+        {/* Verification notes */}
+        {complaint.verificationNotes && (
+          <div className="mt-4 p-4 rounded-xl" style={{ background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.2)' }}>
+            <p className="text-xs font-medium uppercase tracking-wider mb-1" style={{ color: '#3b82f6' }}>Verification Notes</p>
+            <p className="text-sm">{complaint.verificationNotes}</p>
           </div>
         )}
 

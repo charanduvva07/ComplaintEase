@@ -14,6 +14,7 @@ const userRoutes = require('./routes/userRoutes');
 const complaintRoutes = require('./routes/complaintRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const publicRoutes = require('./routes/publicRoutes');
+const staffRoutes = require('./routes/staffRoutes');
 const { errorHandler, notFound } = require('./middlewares/errorHandler');
 
 // Connect to MongoDB
@@ -28,7 +29,14 @@ app.set('trust proxy', 1);
 // Socket.io setup
 const io = new Server(server, {
   cors: {
-    origin: process.env.CLIENT_URL || 'http://localhost:5173',
+    origin: [
+      process.env.CLIENT_URL || 'http://localhost:5173',
+      'http://localhost:3000',
+      'http://localhost:5173',
+      'http://localhost:5174',
+      'http://localhost:5175',
+      'http://localhost:5176'
+    ],
     methods: ['GET', 'POST'],
     credentials: true,
   },
@@ -59,6 +67,10 @@ app.use(cors({
     const allowed = [
       process.env.CLIENT_URL || 'http://localhost:5173',
       'http://localhost:3000',
+      'http://localhost:5173',
+      'http://localhost:5174',
+      'http://localhost:5175',
+      'http://localhost:5176'
     ];
     if (!origin || allowed.includes(origin)) {
       callback(null, true);
@@ -127,6 +139,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/complaints', complaintRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/staff', staffRoutes);
 
 // ============ SOCKET.IO ============
 

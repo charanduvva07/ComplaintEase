@@ -36,6 +36,7 @@ const AdminAnalytics = () => {
     users: u.count,
   }));
   const deptPerf = (data?.avgResolutionByDept || []).slice(0, 6);
+  const staffPerf = (data?.staffPerformance || []).slice(0, 10);
 
   const tooltipStyle = {
     contentStyle: {
@@ -165,21 +166,36 @@ const AdminAnalytics = () => {
         </ChartCard>
       </div>
 
-      {/* Department Performance */}
-      {deptPerf.length > 0 && (
-        <motion.div className="card p-6" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-          <h3 className="font-semibold mb-4">Department Resolution Performance (Avg Hours)</h3>
-          <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={deptPerf} layout="vertical">
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(var(--border-r), var(--border-g), var(--border-b), 0.4)" horizontal={false} />
-              <XAxis type="number" tick={{ fontSize: 11, fill: 'rgb(var(--text-muted))' }} axisLine={false} tickLine={false} />
-              <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: 'rgb(var(--text-muted))' }} axisLine={false} tickLine={false} width={110} />
-              <Tooltip {...tooltipStyle} formatter={(val) => [`${Math.round(val)}h`, 'Avg Resolution']} />
-              <Bar dataKey="avgTime" fill="#6366f1" radius={[0, 4, 4, 0]} name="Avg Hours" />
-            </BarChart>
-          </ResponsiveContainer>
-        </motion.div>
-      )}
+      {/* Department & Staff Performance */}
+      <div className="grid lg:grid-cols-2 gap-6">
+        {deptPerf.length > 0 && (
+          <ChartCard title="Department Resolution (Avg Hours)" description="Fastest resolving departments">
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={deptPerf} layout="vertical">
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(var(--border-r), var(--border-g), var(--border-b), 0.4)" horizontal={false} />
+                <XAxis type="number" tick={{ fontSize: 11, fill: 'rgb(var(--text-muted))' }} axisLine={false} tickLine={false} />
+                <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: 'rgb(var(--text-muted))' }} axisLine={false} tickLine={false} width={110} />
+                <Tooltip {...tooltipStyle} formatter={(val) => [`${Math.round(val)}h`, 'Avg Resolution']} />
+                <Bar dataKey="avgTime" fill="#6366f1" radius={[0, 4, 4, 0]} name="Avg Hours" />
+              </BarChart>
+            </ResponsiveContainer>
+          </ChartCard>
+        )}
+
+        {staffPerf.length > 0 && (
+          <ChartCard title="Top Staff Performers" description="Most complaints resolved">
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={staffPerf} layout="vertical">
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(var(--border-r), var(--border-g), var(--border-b), 0.4)" horizontal={false} />
+                <XAxis type="number" tick={{ fontSize: 11, fill: 'rgb(var(--text-muted))' }} axisLine={false} tickLine={false} />
+                <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: 'rgb(var(--text-muted))' }} axisLine={false} tickLine={false} width={110} />
+                <Tooltip {...tooltipStyle} formatter={(val) => [val, 'Completed Tasks']} />
+                <Bar dataKey="completedTasks" fill="#10b981" radius={[0, 4, 4, 0]} name="Completed Tasks" />
+              </BarChart>
+            </ResponsiveContainer>
+          </ChartCard>
+        )}
+      </div>
     </div>
   );
 };
