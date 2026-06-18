@@ -10,19 +10,20 @@ let _transporter = null;
 const getTransporter = () => {
   if (_transporter) return _transporter;
 
+  const port = parseInt(process.env.EMAIL_PORT) || 465;
   _transporter = nodemailer.createTransport({
     host: process.env.EMAIL_HOST || 'smtp.gmail.com',
-    port: parseInt(process.env.EMAIL_PORT) || 587,
-    secure: false,          // false for port 587 (STARTTLS)
-    requireTLS: true,       // force TLS upgrade
+    port,
+    secure: port === 465,   // true for 465, false for other ports
+    requireTLS: port !== 465, // force TLS upgrade for 587
     auth: {
       user: process.env.EMAIL_USER,
       pass: process.env.EMAIL_PASS,
     },
     // Critical: timeouts prevent the request from hanging indefinitely on Render
-    connectionTimeout: 10000,  // 10s to establish SMTP connection
-    greetingTimeout: 10000,    // 10s for server greeting
-    socketTimeout: 15000,      // 15s per socket operation
+    connectionTimeout: 20000,  // 20s to establish SMTP connection
+    greetingTimeout: 20000,    // 20s for server greeting
+    socketTimeout: 30000,      // 30s per socket operation
     pool: true,                // connection pooling
     maxConnections: 3,
     maxMessages: 100,

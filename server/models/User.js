@@ -94,7 +94,7 @@ userSchema.methods.getResetPasswordToken = function () {
 };
 
 // Indexes
-userSchema.index({ email: 1 });                   // login lookup (also unique constraint)
+// userSchema.index({ email: 1 });                   // Removed: unique:true already creates this index
 userSchema.index({ role: 1, isActive: 1 });        // admin queries: find all active admins
 userSchema.index({ createdAt: -1 });               // sort by newest
 userSchema.index({ isActive: 1 });                 // filter active users

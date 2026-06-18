@@ -7,6 +7,12 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
 const mongoSanitize = require('express-mongo-sanitize');
+const compression = require('compression');
+
+// Default to production on Render if NODE_ENV is missing
+if (process.env.RENDER && !process.env.NODE_ENV) {
+  process.env.NODE_ENV = 'production';
+}
 
 const connectDB = require('./config/db');
 const authRoutes = require('./routes/authRoutes');
@@ -61,6 +67,9 @@ app.use(helmet({
     },
   },
 }));
+
+// Compress all responses
+app.use(compression());
 
 // CORS
 app.use(cors({

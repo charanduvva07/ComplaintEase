@@ -75,7 +75,8 @@ const getDashboard = asyncHandler(async (req, res) => {
     Department.find({ isActive: true })
       .select('name code performance')
       .sort({ 'performance.totalComplaints': -1 })
-      .limit(5),
+      .limit(5)
+      .lean(),
     // Recent complaints
     Complaint.find()
       .populate('submittedBy', 'name email profilePic')
@@ -88,7 +89,8 @@ const getDashboard = asyncHandler(async (req, res) => {
     ActivityLog.find()
       .populate('performedBy', 'name role profilePic')
       .sort({ createdAt: -1 })
-      .limit(10),
+      .limit(10)
+      .lean(),
   ]);
 
   res.json({
