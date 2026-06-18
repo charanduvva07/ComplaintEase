@@ -48,7 +48,7 @@
 | Database | MongoDB + Mongoose |
 | Auth | JWT (HttpOnly cookie support) |
 | File Storage | Cloudinary |
-| Email | Nodemailer (SMTP) |
+| Email | Resend REST API |
 | Security | Helmet, CORS, Rate Limiting, Mongo Sanitize |
 
 ---
@@ -156,7 +156,25 @@ See [`server/.env.example`](./server/.env.example) for the full list with descri
 MONGO_URI      – MongoDB connection string
 JWT_SECRET     – Minimum 32 character secret
 CLIENT_URL     – Your frontend URL (CORS whitelist)
+RESEND_API_KEY – API key from Resend for emails
 ```
+
+---
+
+## 📧 Email Setup (Resend)
+
+ComplaintEase uses **Resend** to reliably deliver transactional emails without dealing with SMTP blocks (which are common on free tiers like Render).
+
+1. Go to [Resend](https://resend.com) and sign up for a free account.
+2. Navigate to **API Keys** and click **Create API Key**.
+3. Copy the generated key.
+4. Add it to your `.env` or Render Environment Variables:
+   ```env
+   RESEND_API_KEY=re_your_api_key_here
+   EMAIL_FROM=ComplaintEase <onboarding@resend.dev>
+   ```
+
+*Note: The `onboarding@resend.dev` address can only send emails to the email address you signed up with. To send emails to any user, you must verify a custom domain in Resend.*
 
 ---
 

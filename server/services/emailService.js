@@ -1,89 +1,52 @@
-const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 
-// ──────────────────────────────────────────────────────────────
-// Singleton transporter — reuses SMTP connection across requests
-// (Creating a new transporter per email is expensive and causes
-//  Render cold-start timeouts)
-// ──────────────────────────────────────────────────────────────
-let _transporter = null;
+const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
-const getTransporter = () => {
-  if (_transporter) return _transporter;
-
-  const port = parseInt(process.env.EMAIL_PORT) || 465;
-  _transporter = nodemailer.createTransport({
-    host: process.env.EMAIL_HOST || 'smtp.gmail.com',
-    port,
-    secure: port === 465,   // true for 465, false for other ports
-    requireTLS: port !== 465, // force TLS upgrade for 587
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS,
-    },
-    // Critical: timeouts prevent the request from hanging indefinitely on Render
-    connectionTimeout: 20000,  // 20s to establish SMTP connection
-    greetingTimeout: 20000,    // 20s for server greeting
-    socketTimeout: 30000,      // 30s per socket operation
-    pool: true,                // connection pooling
-    maxConnections: 3,
-    maxMessages: 100,
-    tls: {
-      rejectUnauthorized: false, // Allow self-signed certs (Render compatibility)
-    },
-  });
-
-  return _transporter;
-};
-
-// Verify SMTP connection at startup — surfaces misconfiguration early
+// Verify Resend configuration at startup
 const verifyEmailConfig = async () => {
-  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-    console.warn('⚠️  Email credentials not set — email sending disabled');
+  if (!process.env.RESEND_API_KEY) {
+    console.warn('⚠️  RESEND_API_KEY not set — email sending disabled');
+    console.warn('   Get your free API key at https://resend.com');
     return false;
   }
-  try {
-    const transporter = getTransporter();
-    await transporter.verify();
-    console.log('✅ SMTP connection verified — emails ready');
-    return true;
-  } catch (error) {
-    console.error(`❌ SMTP verification failed: [${error.code}] ${error.message}`);
-    console.error('   Emails will not be sent until SMTP is fixed');
-    // Reset transporter so it can be retried
-    _transporter = null;
-    return false;
-  }
+  console.log('✅ Resend API Key found — emails ready');
+  return true;
 };
 
 // ──────────────────────────────────────────────────────────────
 // sendEmail — never throws (email failure must not break requests)
 // ──────────────────────────────────────────────────────────────
 const sendEmail = async ({ to, subject, html, text }) => {
-  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-    console.warn(`⚠️  Email skipped (no credentials): to=${to}, subject="${subject}"`);
+  if (!resend) {
+    console.warn(`⚠️  Email skipped (no API key): to=${to}, subject="${subject}"`);
     return null;
   }
 
   try {
-    const transporter = getTransporter();
-    const mailOptions = {
-      from: process.env.EMAIL_FROM || `ComplaintEase <${process.env.EMAIL_USER}>`,
-      to,
+    // If using the default resend domain, you can only send to your own registered email!
+    // To send to any user, you must verify a custom domain in Resend and update EMAIL_FROM.
+    const fromAddress = process.env.EMAIL_FROM || 'ComplaintEase <onboarding@resend.dev>';
+    
+    // Resend expects 'to' to be an array or string.
+    const toAddress = Array.isArray(to) ? to : [to];
+
+    const data = await resend.emails.send({
+      from: fromAddress,
+      to: toAddress,
       subject,
       html,
       text: text || html.replace(/<[^>]*>/g, ''),
-    };
+    });
 
-    const info = await transporter.sendMail(mailOptions);
-    console.log(`📧 Email sent → ${to} | msgId: ${info.messageId}`);
-    return info;
-  } catch (error) {
-    console.error(`❌ Email failed → ${to} | [${error.code || 'ERR'}] ${error.message}`);
-    // Reset transporter on connection errors so next attempt creates fresh one
-    if (error.code === 'ECONNECTION' || error.code === 'ETIMEDOUT' || error.code === 'EAUTH') {
-      console.warn('   Resetting SMTP transporter due to connection error');
-      _transporter = null;
+    if (data.error) {
+      console.error(`❌ Resend API Error → ${to} | ${data.error.message}`);
+      return null;
     }
+
+    console.log(`📧 Email sent via Resend → ${to} | msgId: ${data.data?.id}`);
+    return data;
+  } catch (error) {
+    console.error(`❌ Email failed → ${to} | ${error.message}`);
     // Never throw — email failure must NOT break API responses
     return null;
   }
