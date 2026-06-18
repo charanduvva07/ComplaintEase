@@ -1,4 +1,4 @@
-import api from './api';
+import api, { uploadApi } from './api';
 
 // ─── Auth ───────────────────────────────────────────────────────────
 export const authService = {
@@ -20,7 +20,7 @@ export const publicService = {
 export const userService = {
   getProfile: () => api.get('/users/profile'),
   updateProfile: (formData) =>
-    api.put('/users/profile', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+    uploadApi.put('/users/profile', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
   changePassword: (data) => api.put('/users/change-password', data),
   updatePreferences: (data) => api.put('/users/preferences', data),
   getDashboard: () => api.get('/users/dashboard'),
@@ -33,13 +33,13 @@ export const userService = {
 // ─── Complaints ──────────────────────────────────────────────────────
 export const complaintService = {
   submit: (formData) =>
-    api.post('/complaints', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+    uploadApi.post('/complaints', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
   getAll: (params) => api.get('/complaints', { params }),
   getOne: (id) => api.get(`/complaints/${id}`),
   update: (id, data) => api.put(`/complaints/${id}`, data),
   delete: (id) => api.delete(`/complaints/${id}`),
   addComment: (id, formData) =>
-    api.post(`/complaints/${id}/comments`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+    uploadApi.post(`/complaints/${id}/comments`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
   getComments: (id) => api.get(`/complaints/${id}/comments`),
   rate: (id, data) => api.post(`/complaints/${id}/rate`, data),
 };
@@ -71,5 +71,5 @@ export const staffService = {
   acceptComplaint: (id) => api.put(`/staff/complaints/${id}/accept`),
   startWork: (id) => api.put(`/staff/complaints/${id}/start`),
   completeWork: (id, formData) =>
-    api.put(`/staff/complaints/${id}/complete`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+    uploadApi.put(`/staff/complaints/${id}/complete`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
 };

@@ -112,7 +112,8 @@ const getUserComplaints = asyncHandler(async (req, res) => {
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)
-      .select('-activityLog -timeline'),
+      .select('-activityLog -timeline')
+      .lean(),
     Complaint.countDocuments(query),
   ]);
 
@@ -141,7 +142,8 @@ const getUserNotifications = asyncHandler(async (req, res) => {
       .populate('sender', 'name profilePic')
       .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(limit),
+      .limit(limit)
+      .lean(),
     Notification.countDocuments({ recipient: req.user._id }),
     Notification.countDocuments({ recipient: req.user._id, isRead: false }),
   ]);
@@ -182,7 +184,7 @@ const markAllNotificationsRead = asyncHandler(async (req, res) => {
 const getUserDashboard = asyncHandler(async (req, res) => {
   const userId = req.user._id;
 
-  const [stats, recentComplaints, monthlyTrend] = await Promise.all([
+  const [stats, recentComplaints, monthlyTrend, categoryBreakdown] = await Promise.all([
     Complaint.aggregate([
       { $match: { submittedBy: userId } },
       {
@@ -201,7 +203,8 @@ const getUserDashboard = asyncHandler(async (req, res) => {
       .populate('department', 'name')
       .sort({ createdAt: -1 })
       .limit(5)
-      .select('complaintId title status category createdAt urgency'),
+      .select('complaintId title status category createdAt urgency')
+      .lean(),
     Complaint.aggregate([
       { $match: { submittedBy: userId } },
       {
@@ -213,12 +216,12 @@ const getUserDashboard = asyncHandler(async (req, res) => {
       { $sort: { '_id.year': 1, '_id.month': 1 } },
       { $limit: 6 },
     ]),
-  ]);
-
-  const categoryBreakdown = await Complaint.aggregate([
-    { $match: { submittedBy: userId } },
-    { $group: { _id: '$category', count: { $sum: 1 } } },
-    { $sort: { count: -1 } },
+    // ── FIX: Run categoryBreakdown in parallel (was serial after Promise.all) ──
+    Complaint.aggregate([
+      { $match: { submittedBy: userId } },
+      { $group: { _id: '$category', count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+    ]),
   ]);
 
   res.json({

@@ -10,13 +10,15 @@ const generateToken = (id, rememberMe = false) => {
   });
 };
 
+// ────────────────────────────────────────────────────────────────────────────
 // @desc    Register user
 // @route   POST /api/auth/register
 // @access  Public
+// ────────────────────────────────────────────────────────────────────────────
 const register = asyncHandler(async (req, res) => {
   const { name, email, password } = req.body;
 
-  const existingUser = await User.findOne({ email });
+  const existingUser = await User.findOne({ email }).lean();
   if (existingUser) {
     res.status(400);
     throw new Error('Email already registered');
@@ -28,10 +30,19 @@ const register = asyncHandler(async (req, res) => {
   const verificationToken = user.getEmailVerificationToken();
   await user.save();
 
+  // ── FIX: Send verification email NON-BLOCKING (fire-and-forget) ──────────
+  // Previously: await sendEmail(...) blocked the response. If SMTP timed out
+  // on Render (common on cold starts), the 30s axios timeout fired and the
+  // frontend showed "Something went wrong" — but the account WAS created.
+  // Now: response is sent immediately; email is sent in background.
   const verifyUrl = `${process.env.CLIENT_URL}/verify-email/${verificationToken}`;
   const { subject, html } = emailTemplates.verifyEmail(user.name, verifyUrl);
-  await sendEmail({ to: user.email, subject, html });
+  // No await — intentional fire-and-forget
+  sendEmail({ to: user.email, subject, html }).catch((err) => {
+    console.error(`Registration email failed for ${user.email}: ${err.message}`);
+  });
 
+  // Respond immediately — user sees success toast right away
   res.status(201).json({
     success: true,
     message: 'Registration successful! Please check your email to verify your account.',
@@ -45,9 +56,11 @@ const register = asyncHandler(async (req, res) => {
   });
 });
 
+// ────────────────────────────────────────────────────────────────────────────
 // @desc    Login user
 // @route   POST /api/auth/login
 // @access  Public
+// ────────────────────────────────────────────────────────────────────────────
 const login = asyncHandler(async (req, res) => {
   const { email, password, rememberMe = false } = req.body;
 
@@ -63,10 +76,10 @@ const login = asyncHandler(async (req, res) => {
     throw new Error('Your account has been suspended. Please contact support.');
   }
 
-  // Update last login
-  user.lastLogin = new Date();
-  user.rememberMe = rememberMe;
-  await user.save();
+  // ── FIX: Use atomic update for lastLogin instead of full document save ───
+  // Previously: user.save() re-validates & re-hashes nothing but still hits DB
+  // Now: single findByIdAndUpdate is faster and avoids unnecessary middleware
+  await User.updateOne({ _id: user._id }, { lastLogin: new Date(), rememberMe });
 
   const token = generateToken(user._id, rememberMe);
 
@@ -87,9 +100,11 @@ const login = asyncHandler(async (req, res) => {
   });
 });
 
+// ────────────────────────────────────────────────────────────────────────────
 // @desc    Verify email
 // @route   GET /api/auth/verify-email/:token
 // @access  Public
+// ────────────────────────────────────────────────────────────────────────────
 const verifyEmail = asyncHandler(async (req, res) => {
   const hashedToken = crypto.createHash('sha256').update(req.params.token).digest('hex');
 
@@ -124,9 +139,11 @@ const verifyEmail = asyncHandler(async (req, res) => {
   });
 });
 
+// ────────────────────────────────────────────────────────────────────────────
 // @desc    Get current user
 // @route   GET /api/auth/me
 // @access  Private
+// ────────────────────────────────────────────────────────────────────────────
 const getMe = asyncHandler(async (req, res) => {
   const user = await User.findById(req.user._id).populate('department', 'name code');
 
@@ -136,9 +153,11 @@ const getMe = asyncHandler(async (req, res) => {
   });
 });
 
+// ────────────────────────────────────────────────────────────────────────────
 // @desc    Forgot password
 // @route   POST /api/auth/forgot-password
 // @access  Public
+// ────────────────────────────────────────────────────────────────────────────
 const forgotPassword = asyncHandler(async (req, res) => {
   const user = await User.findOne({ email: req.body.email });
 
@@ -155,7 +174,11 @@ const forgotPassword = asyncHandler(async (req, res) => {
 
   const resetUrl = `${process.env.CLIENT_URL}/reset-password/${resetToken}`;
   const { subject, html } = emailTemplates.resetPassword(user.name, resetUrl);
-  await sendEmail({ to: user.email, subject, html });
+
+  // Non-blocking — password reset email shouldn't block the response either
+  sendEmail({ to: user.email, subject, html }).catch((err) => {
+    console.error(`Password reset email failed for ${user.email}: ${err.message}`);
+  });
 
   res.json({
     success: true,
@@ -163,9 +186,11 @@ const forgotPassword = asyncHandler(async (req, res) => {
   });
 });
 
+// ────────────────────────────────────────────────────────────────────────────
 // @desc    Reset password
 // @route   POST /api/auth/reset-password/:token
 // @access  Public
+// ────────────────────────────────────────────────────────────────────────────
 const resetPassword = asyncHandler(async (req, res) => {
   const hashedToken = crypto.createHash('sha256').update(req.params.token).digest('hex');
 
@@ -193,9 +218,11 @@ const resetPassword = asyncHandler(async (req, res) => {
   });
 });
 
+// ────────────────────────────────────────────────────────────────────────────
 // @desc    Logout
 // @route   POST /api/auth/logout
 // @access  Private
+// ────────────────────────────────────────────────────────────────────────────
 const logout = asyncHandler(async (req, res) => {
   res.json({ success: true, message: 'Logged out successfully' });
 });

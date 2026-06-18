@@ -18,7 +18,8 @@ const protect = asyncHandler(async (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = await User.findById(decoded.id).select('-password');
+    // lean() returns plain JS object — faster than full Mongoose document (no save() needed here)
+    req.user = await User.findById(decoded.id).select('-password').lean();
 
     if (!req.user) {
       res.status(401);
@@ -57,7 +58,7 @@ const optionalAuth = asyncHandler(async (req, res, next) => {
   if (token) {
     try {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      req.user = await User.findById(decoded.id).select('-password');
+      req.user = await User.findById(decoded.id).select('-password').lean();
     } catch {
       req.user = null;
     }

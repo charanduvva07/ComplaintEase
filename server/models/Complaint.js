@@ -157,13 +157,15 @@ complaintSchema.pre('save', async function (next) {
 
 
 // Indexes
-complaintSchema.index({ submittedBy: 1, createdAt: -1 });
-complaintSchema.index({ status: 1 });
-complaintSchema.index({ category: 1 });
-complaintSchema.index({ department: 1 });
-complaintSchema.index({ priority: 1 });
-complaintSchema.index({ createdAt: -1 });
-// Note: complaintId has unique:true, so index is auto-created
+complaintSchema.index({ submittedBy: 1, createdAt: -1 });   // user complaint history
+complaintSchema.index({ submittedBy: 1, status: 1 });        // user dashboard status filter
+complaintSchema.index({ status: 1, createdAt: -1 });         // admin filtered list by status
+complaintSchema.index({ department: 1, status: 1 });         // department complaint view
+complaintSchema.index({ assignedTo: 1, status: 1 });         // staff assigned complaints
+complaintSchema.index({ category: 1 });                      // category filter
+complaintSchema.index({ priority: 1 });                      // priority filter
+complaintSchema.index({ createdAt: -1 });                    // default sort
+// Note: complaintId has unique:true so index is auto-created
 
 
 module.exports = mongoose.model('Complaint', complaintSchema);

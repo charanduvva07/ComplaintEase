@@ -16,6 +16,7 @@ const adminRoutes = require('./routes/adminRoutes');
 const publicRoutes = require('./routes/publicRoutes');
 const staffRoutes = require('./routes/staffRoutes');
 const { errorHandler, notFound } = require('./middlewares/errorHandler');
+const { verifyEmailConfig } = require('./services/emailService');
 
 // Connect to MongoDB
 connectDB();
@@ -83,10 +84,24 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 
-// Request logging (only in development)
-if (process.env.NODE_ENV === 'development') {
+// Request logging — combined in production (for Render logs), dev format locally
+if (process.env.NODE_ENV === 'production') {
+  app.use(morgan('combined'));
+} else {
   app.use(morgan('dev'));
 }
+
+// Request timing middleware — logs slow requests (>1s) in production
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    if (duration > 1000) {
+      console.warn(`⏱ SLOW [${duration}ms] ${req.method} ${req.path}`);
+    }
+  });
+  next();
+});
 
 // Rate limiting - general
 const limiter = rateLimit({
@@ -128,8 +143,12 @@ app.get('/api/health', (req, res) => {
     environment: process.env.NODE_ENV,
     timestamp: new Date().toISOString(),
     version: '1.0.0',
+    uptime: Math.floor(process.uptime()),
   });
 });
+
+// Keep-alive ping — use with UptimeRobot/cron-job.org to prevent Render cold starts
+app.get('/api/ping', (req, res) => res.json({ ok: true, ts: Date.now() }));
 
 // Public routes (no auth)
 app.use('/api/departments', publicRoutes);
@@ -196,6 +215,9 @@ server.listen(PORT, () => {
   console.log(`  ║  🌐 Environment: ${process.env.NODE_ENV || 'development'}           ║`);
   console.log(`  ║  📡 Socket.io: enabled                 ║`);
   console.log(`  ╚════════════════════════════════════════╝\n`);
+
+  // Verify SMTP configuration at startup — surfaces email issues immediately
+  verifyEmailConfig().catch(() => {});
 });
 
 module.exports = { app, server, io };

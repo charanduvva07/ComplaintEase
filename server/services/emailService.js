@@ -1,36 +1,96 @@
 const nodemailer = require('nodemailer');
 
-const createTransporter = () => {
-  return nodemailer.createTransport({
-    host: process.env.EMAIL_HOST,
+// ──────────────────────────────────────────────────────────────
+// Singleton transporter — reuses SMTP connection across requests
+// (Creating a new transporter per email is expensive and causes
+//  Render cold-start timeouts)
+// ──────────────────────────────────────────────────────────────
+let _transporter = null;
+
+const getTransporter = () => {
+  if (_transporter) return _transporter;
+
+  _transporter = nodemailer.createTransport({
+    host: process.env.EMAIL_HOST || 'smtp.gmail.com',
     port: parseInt(process.env.EMAIL_PORT) || 587,
-    secure: process.env.EMAIL_PORT === '465',
+    secure: false,          // false for port 587 (STARTTLS)
+    requireTLS: true,       // force TLS upgrade
     auth: {
       user: process.env.EMAIL_USER,
       pass: process.env.EMAIL_PASS,
     },
+    // Critical: timeouts prevent the request from hanging indefinitely on Render
+    connectionTimeout: 10000,  // 10s to establish SMTP connection
+    greetingTimeout: 10000,    // 10s for server greeting
+    socketTimeout: 15000,      // 15s per socket operation
+    pool: true,                // connection pooling
+    maxConnections: 3,
+    maxMessages: 100,
+    tls: {
+      rejectUnauthorized: false, // Allow self-signed certs (Render compatibility)
+    },
   });
+
+  return _transporter;
 };
 
-const sendEmail = async ({ to, subject, html, text }) => {
+// Verify SMTP connection at startup — surfaces misconfiguration early
+const verifyEmailConfig = async () => {
+  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+    console.warn('⚠️  Email credentials not set — email sending disabled');
+    return false;
+  }
   try {
-    const transporter = createTransporter();
+    const transporter = getTransporter();
+    await transporter.verify();
+    console.log('✅ SMTP connection verified — emails ready');
+    return true;
+  } catch (error) {
+    console.error(`❌ SMTP verification failed: [${error.code}] ${error.message}`);
+    console.error('   Emails will not be sent until SMTP is fixed');
+    // Reset transporter so it can be retried
+    _transporter = null;
+    return false;
+  }
+};
+
+// ──────────────────────────────────────────────────────────────
+// sendEmail — never throws (email failure must not break requests)
+// ──────────────────────────────────────────────────────────────
+const sendEmail = async ({ to, subject, html, text }) => {
+  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+    console.warn(`⚠️  Email skipped (no credentials): to=${to}, subject="${subject}"`);
+    return null;
+  }
+
+  try {
+    const transporter = getTransporter();
     const mailOptions = {
-      from: process.env.EMAIL_FROM || 'ComplaintEase <noreply@complaintease.com>',
+      from: process.env.EMAIL_FROM || `ComplaintEase <${process.env.EMAIL_USER}>`,
       to,
       subject,
       html,
       text: text || html.replace(/<[^>]*>/g, ''),
     };
+
     const info = await transporter.sendMail(mailOptions);
-    console.log(`📧 Email sent to ${to}: ${info.messageId}`);
+    console.log(`📧 Email sent → ${to} | msgId: ${info.messageId}`);
     return info;
   } catch (error) {
-    console.error('Email error:', error.message);
-    // Don't throw - email failures shouldn't break the request
+    console.error(`❌ Email failed → ${to} | [${error.code || 'ERR'}] ${error.message}`);
+    // Reset transporter on connection errors so next attempt creates fresh one
+    if (error.code === 'ECONNECTION' || error.code === 'ETIMEDOUT' || error.code === 'EAUTH') {
+      console.warn('   Resetting SMTP transporter due to connection error');
+      _transporter = null;
+    }
+    // Never throw — email failure must NOT break API responses
+    return null;
   }
 };
 
+// ──────────────────────────────────────────────────────────────
+// Email Templates
+// ──────────────────────────────────────────────────────────────
 const emailTemplates = {
   verifyEmail: (name, verifyUrl) => ({
     subject: 'Verify Your Email – ComplaintEase',
@@ -118,4 +178,4 @@ const emailTemplates = {
   }),
 };
 
-module.exports = { sendEmail, emailTemplates };
+module.exports = { sendEmail, emailTemplates, verifyEmailConfig };

@@ -82,7 +82,8 @@ const getDashboard = asyncHandler(async (req, res) => {
       .populate('department', 'name')
       .sort({ createdAt: -1 })
       .limit(8)
-      .select('complaintId title status category urgency priority createdAt'),
+      .select('complaintId title status category urgency priority createdAt')
+      .lean(),
     // Recent activity
     ActivityLog.find()
       .populate('performedBy', 'name role profilePic')
@@ -147,7 +148,8 @@ const getAllComplaints = asyncHandler(async (req, res) => {
       .sort({ [sortField]: sortOrder })
       .skip(skip)
       .limit(limit)
-      .select('-activityLog -timeline'),
+      .select('-activityLog -timeline')
+      .lean(),
     Complaint.countDocuments(query),
   ]);
 
@@ -182,7 +184,8 @@ const getAllUsers = asyncHandler(async (req, res) => {
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)
-      .select('-password'),
+      .select('-password')
+      .lean(),
     User.countDocuments(query),
   ]);
 

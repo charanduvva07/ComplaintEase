@@ -67,7 +67,7 @@ const userSchema = new mongoose.Schema(
 // Hash password before save
 userSchema.pre('save', async function (next) {
   if (!this.isModified('password')) return next();
-  const salt = await bcrypt.genSalt(12);
+  const salt = await bcrypt.genSalt(10); // 10 rounds: ~100ms (secure + fast on Render free tier)
   this.password = await bcrypt.hash(this.password, salt);
   next();
 });
@@ -94,8 +94,9 @@ userSchema.methods.getResetPasswordToken = function () {
 };
 
 // Indexes
-userSchema.index({ role: 1 });
-userSchema.index({ isActive: 1 });
-userSchema.index({ createdAt: -1 });
+userSchema.index({ email: 1 });                   // login lookup (also unique constraint)
+userSchema.index({ role: 1, isActive: 1 });        // admin queries: find all active admins
+userSchema.index({ createdAt: -1 });               // sort by newest
+userSchema.index({ isActive: 1 });                 // filter active users
 
 module.exports = mongoose.model('User', userSchema);

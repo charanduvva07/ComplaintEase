@@ -9,14 +9,16 @@ const { sendEmail, emailTemplates } = require('../services/emailService');
 // Get io from app
 const getIo = (req) => req.app.get('io');
 
+// ────────────────────────────────────────────────────────────────────────────
 // @desc    Submit a new complaint
 // @route   POST /api/complaints
 // @access  Private (User)
+// ────────────────────────────────────────────────────────────────────────────
 const submitComplaint = asyncHandler(async (req, res) => {
   const { title, description, category, department, location, urgency } = req.body;
 
   // Validate department exists
-  const dept = await Department.findById(department);
+  const dept = await Department.findById(department).lean();
   if (!dept) {
     res.status(404);
     throw new Error('Department not found');
@@ -53,32 +55,38 @@ const submitComplaint = asyncHandler(async (req, res) => {
     documents,
   });
 
-  // Update user stats
-  await User.findByIdAndUpdate(req.user._id, { $inc: { 'stats.totalComplaints': 1 } });
-
-  // Update department stats
-  await Department.findByIdAndUpdate(department, { $inc: { 'performance.totalComplaints': 1 } });
-
-  // Create notification for admin
-  const admins = await User.find({ role: 'admin' }, '_id');
   const io = getIo(req);
 
-  for (const admin of admins) {
-    await createNotification({
-      recipient: admin._id,
-      sender: req.user._id,
-      title: 'New Complaint Submitted',
-      message: `${req.user.name} submitted: ${title}`,
-      type: 'complaint_submitted',
-      relatedComplaint: complaint._id,
-      link: `/admin/complaints/${complaint._id}`,
-      io,
-    });
+  // ── FIX: Run stats updates and admin lookup in parallel (was sequential) ──
+  const [admins] = await Promise.all([
+    User.find({ role: 'admin', isActive: true }, '_id').lean(),
+    User.updateOne({ _id: req.user._id }, { $inc: { 'stats.totalComplaints': 1 } }),
+    Department.updateOne({ _id: department }, { $inc: { 'performance.totalComplaints': 1 } }),
+  ]);
+
+  // ── FIX: Create admin notifications in parallel (was sequential loop) ────
+  if (admins.length > 0) {
+    await Promise.all(
+      admins.map((admin) =>
+        createNotification({
+          recipient: admin._id,
+          sender: req.user._id,
+          title: 'New Complaint Submitted',
+          message: `${req.user.name} submitted: ${title}`,
+          type: 'complaint_submitted',
+          relatedComplaint: complaint._id,
+          link: `/admin/complaints/${complaint._id}`,
+          io,
+        })
+      )
+    );
   }
 
-  // Send confirmation email
+  // ── FIX: Send email NON-BLOCKING — never block complaint submission ────────
   const { subject, html } = emailTemplates.complaintSubmitted(req.user.name, complaint.complaintId, title);
-  await sendEmail({ to: req.user.email, subject, html });
+  sendEmail({ to: req.user.email, subject, html }).catch((err) => {
+    console.error(`Complaint email failed for ${req.user.email}: ${err.message}`);
+  });
 
   // Emit real-time event
   if (io) {
@@ -98,9 +106,11 @@ const submitComplaint = asyncHandler(async (req, res) => {
   res.status(201).json({ success: true, message: 'Complaint submitted successfully', complaint });
 });
 
+// ────────────────────────────────────────────────────────────────────────────
 // @desc    Get all complaints (with filters)
 // @route   GET /api/complaints
 // @access  Private
+// ────────────────────────────────────────────────────────────────────────────
 const getComplaints = asyncHandler(async (req, res) => {
   const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit) || 10;
@@ -151,7 +161,8 @@ const getComplaints = asyncHandler(async (req, res) => {
       .sort({ [sortField]: sortOrder })
       .skip(skip)
       .limit(limit)
-      .select('-activityLog'),
+      .select('-activityLog')
+      .lean(),
     Complaint.countDocuments(query),
   ]);
 
@@ -162,9 +173,11 @@ const getComplaints = asyncHandler(async (req, res) => {
   });
 });
 
+// ────────────────────────────────────────────────────────────────────────────
 // @desc    Get single complaint
 // @route   GET /api/complaints/:id
 // @access  Private
+// ────────────────────────────────────────────────────────────────────────────
 const getComplaint = asyncHandler(async (req, res) => {
   const complaint = await Complaint.findById(req.params.id)
     .populate('department', 'name code contactEmail contactPhone')
@@ -184,15 +197,17 @@ const getComplaint = asyncHandler(async (req, res) => {
     throw new Error('Not authorized to view this complaint');
   }
 
-  // Increment view count
-  await Complaint.findByIdAndUpdate(req.params.id, { $inc: { viewCount: 1 } });
+  // Increment view count (non-blocking — don't await)
+  Complaint.findByIdAndUpdate(req.params.id, { $inc: { viewCount: 1 } }).catch(() => {});
 
   res.json({ success: true, complaint });
 });
 
+// ────────────────────────────────────────────────────────────────────────────
 // @desc    Update complaint (admin/staff)
 // @route   PUT /api/complaints/:id
 // @access  Private (Admin/Staff)
+// ────────────────────────────────────────────────────────────────────────────
 const updateComplaint = asyncHandler(async (req, res) => {
   const complaint = await Complaint.findById(req.params.id).populate('submittedBy', 'name email preferences');
 
@@ -221,23 +236,26 @@ const updateComplaint = asyncHandler(async (req, res) => {
 
     if (status === 'Resolved') {
       complaint.resolvedAt = new Date();
-      // Update department and user stats
-      await Department.findByIdAndUpdate(complaint.department, { $inc: { 'performance.resolvedComplaints': 1 } });
-      await User.findByIdAndUpdate(complaint.submittedBy._id, { $inc: { 'stats.resolvedComplaints': 1 } });
+      // Update department and user stats in parallel
+      await Promise.all([
+        Department.updateOne({ _id: complaint.department }, { $inc: { 'performance.resolvedComplaints': 1 } }),
+        User.updateOne({ _id: complaint.submittedBy._id }, { $inc: { 'stats.resolvedComplaints': 1 } }),
+      ]);
     }
     if (status === 'Closed') complaint.closedAt = new Date();
 
-    // Notify the user
-    const { subject, html } = emailTemplates.statusChanged(
-      complaint.submittedBy.name,
-      complaint.complaintId,
-      complaint.title,
-      oldStatus,
-      status
-    );
-
+    // ── FIX: Send status email NON-BLOCKING ────────────────────────────────
     if (complaint.submittedBy.preferences?.emailNotifications) {
-      await sendEmail({ to: complaint.submittedBy.email, subject, html });
+      const { subject, html } = emailTemplates.statusChanged(
+        complaint.submittedBy.name,
+        complaint.complaintId,
+        complaint.title,
+        oldStatus,
+        status
+      );
+      sendEmail({ to: complaint.submittedBy.email, subject, html }).catch((err) => {
+        console.error(`Status email failed: ${err.message}`);
+      });
     }
 
     await createNotification({
@@ -309,11 +327,13 @@ const updateComplaint = asyncHandler(async (req, res) => {
   res.json({ success: true, message: 'Complaint updated successfully', complaint });
 });
 
+// ────────────────────────────────────────────────────────────────────────────
 // @desc    Delete complaint
 // @route   DELETE /api/complaints/:id
 // @access  Private (Admin or owner)
+// ────────────────────────────────────────────────────────────────────────────
 const deleteComplaint = asyncHandler(async (req, res) => {
-  const complaint = await Complaint.findById(req.params.id);
+  const complaint = await Complaint.findById(req.params.id).lean();
 
   if (!complaint) {
     res.status(404);
@@ -332,16 +352,20 @@ const deleteComplaint = asyncHandler(async (req, res) => {
     }
   }
 
-  await complaint.deleteOne();
+  await Complaint.deleteOne({ _id: req.params.id });
 
   res.json({ success: true, message: 'Complaint deleted successfully' });
 });
 
+// ────────────────────────────────────────────────────────────────────────────
 // @desc    Add comment to complaint
 // @route   POST /api/complaints/:id/comments
 // @access  Private
+// ────────────────────────────────────────────────────────────────────────────
 const addComment = asyncHandler(async (req, res) => {
-  const complaint = await Complaint.findById(req.params.id).populate('submittedBy', '_id name email preferences');
+  const complaint = await Complaint.findById(req.params.id)
+    .populate('submittedBy', '_id name email preferences')
+    .lean();
 
   if (!complaint) {
     res.status(404);
@@ -376,7 +400,6 @@ const addComment = asyncHandler(async (req, res) => {
   const io = getIo(req);
   const isAdminComment = ['admin', 'staff'].includes(req.user.role);
 
-  // Notify relevant parties
   const notifyUser = isAdminComment ? complaint.submittedBy._id : null;
   const notifyAdmins = !isAdminComment;
 
@@ -392,29 +415,33 @@ const addComment = asyncHandler(async (req, res) => {
       io,
     });
 
+    // ── FIX: Send reply email NON-BLOCKING ────────────────────────────────
     if (complaint.submittedBy.preferences?.emailNotifications) {
-      await sendEmail({
+      sendEmail({
         to: complaint.submittedBy.email,
         subject: `New reply on complaint ${complaint.complaintId}`,
         html: `<p>Hello ${complaint.submittedBy.name}, an admin has replied to your complaint <strong>${complaint.complaintId}</strong>.</p>`,
-      });
+      }).catch((err) => console.error(`Reply email failed: ${err.message}`));
     }
   }
 
   if (notifyAdmins) {
-    const admins = await User.find({ role: 'admin' }, '_id');
-    for (const admin of admins) {
-      await createNotification({
-        recipient: admin._id,
-        sender: req.user._id,
-        title: 'New Comment on Complaint',
-        message: `User commented on complaint ${complaint.complaintId}`,
-        type: 'new_comment',
-        relatedComplaint: complaint._id,
-        link: `/admin/complaints/${complaint._id}`,
-        io,
-      });
-    }
+    // ── FIX: Notify admins in parallel (was sequential loop) ─────────────
+    const admins = await User.find({ role: 'admin', isActive: true }, '_id').lean();
+    await Promise.all(
+      admins.map((admin) =>
+        createNotification({
+          recipient: admin._id,
+          sender: req.user._id,
+          title: 'New Comment on Complaint',
+          message: `User commented on complaint ${complaint.complaintId}`,
+          type: 'new_comment',
+          relatedComplaint: complaint._id,
+          link: `/admin/complaints/${complaint._id}`,
+          io,
+        })
+      )
+    );
   }
 
   // Real-time
@@ -425,11 +452,13 @@ const addComment = asyncHandler(async (req, res) => {
   res.status(201).json({ success: true, comment });
 });
 
+// ────────────────────────────────────────────────────────────────────────────
 // @desc    Get comments for a complaint
 // @route   GET /api/complaints/:id/comments
 // @access  Private
+// ────────────────────────────────────────────────────────────────────────────
 const getComments = asyncHandler(async (req, res) => {
-  const complaint = await Complaint.findById(req.params.id);
+  const complaint = await Complaint.findById(req.params.id).lean();
   if (!complaint) {
     res.status(404);
     throw new Error('Complaint not found');
@@ -441,46 +470,58 @@ const getComments = asyncHandler(async (req, res) => {
     throw new Error('Not authorized');
   }
 
-  const query = {
+  const baseQuery = {
     complaintId: req.params.id,
     isDeleted: false,
-    parentId: null,
   };
 
   // Regular users can't see internal comments
   if (req.user.role === 'user') {
-    query.isInternal = false;
+    baseQuery.isInternal = false;
   }
 
-  const comments = await Comment.find(query)
+  // ── FIX: Fetch ALL comments in 2 queries instead of N+1 ─────────────────
+  // Previously: 1 query for top-level, then 1 query per comment for replies
+  // Now: fetch all at once, group by parentId in memory
+  const allComments = await Comment.find(baseQuery)
     .populate('author', 'name email profilePic role')
-    .sort({ createdAt: 1 });
+    .sort({ createdAt: 1 })
+    .lean();
 
-  // Get replies
-  const commentsWithReplies = await Promise.all(
-    comments.map(async (comment) => {
-      const replyQuery = { parentId: comment._id, isDeleted: false };
-      if (req.user.role === 'user') replyQuery.isInternal = false;
+  // Group into top-level + replies map
+  const topLevel = [];
+  const repliesMap = new Map();
 
-      const replies = await Comment.find(replyQuery)
-        .populate('author', 'name email profilePic role')
-        .sort({ createdAt: 1 });
-      return { ...comment.toObject(), replies };
-    })
-  );
+  for (const comment of allComments) {
+    if (!comment.parentId) {
+      topLevel.push(comment);
+    } else {
+      const pid = comment.parentId.toString();
+      if (!repliesMap.has(pid)) repliesMap.set(pid, []);
+      repliesMap.get(pid).push(comment);
+    }
+  }
 
-  // Mark as read
-  await Comment.updateMany(
+  // Attach replies to their parent comment
+  const commentsWithReplies = topLevel.map((comment) => ({
+    ...comment,
+    replies: repliesMap.get(comment._id.toString()) || [],
+  }));
+
+  // Mark as read (non-blocking — don't await)
+  Comment.updateMany(
     { complaintId: req.params.id, 'readBy.user': { $ne: req.user._id } },
     { $addToSet: { readBy: { user: req.user._id, readAt: new Date() } } }
-  );
+  ).catch(() => {});
 
   res.json({ success: true, comments: commentsWithReplies });
 });
 
+// ────────────────────────────────────────────────────────────────────────────
 // @desc    Rate a resolved complaint
 // @route   POST /api/complaints/:id/rate
 // @access  Private (User, owner only)
+// ────────────────────────────────────────────────────────────────────────────
 const rateComplaint = asyncHandler(async (req, res) => {
   const { score, feedback } = req.body;
 
