@@ -4,8 +4,9 @@ import { motion } from 'framer-motion';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Eye, EyeOff, Zap, Mail, Lock, LogIn } from 'lucide-react';
+import { Eye, EyeOff, Zap, Mail, Lock, LogIn, RefreshCw } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { authService } from '../../services/services';
 import toast from 'react-hot-toast';
 
 const schema = z.object({
@@ -19,6 +20,8 @@ const LoginPage = () => {
   const navigate = useNavigate();
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [unverifiedEmail, setUnverifiedEmail] = useState(null); // show resend banner
+  const [resendLoading, setResendLoading] = useState(false);
 
   const { register, handleSubmit, formState: { errors } } = useForm({
     resolver: zodResolver(schema),
@@ -27,14 +30,33 @@ const LoginPage = () => {
 
   const onSubmit = async (data) => {
     setIsLoading(true);
+    setUnverifiedEmail(null);
     try {
       const result = await login(data);
       toast.success(`Welcome back, ${result.user.name}!`);
-      navigate(result.user.role === 'admin' ? '/admin' : '/dashboard');
+      navigate(result.user.role === 'admin' ? '/admin' : result.user.role === 'staff' ? '/staff' : '/dashboard');
     } catch (err) {
-      toast.error(err.message || 'Login failed. Please check your credentials.');
+      const msg = err.message || 'Login failed. Please check your credentials.';
+      // Detect email-not-verified errors and show the resend banner
+      if (msg.toLowerCase().includes('verif') || msg.toLowerCase().includes('not verified')) {
+        setUnverifiedEmail(data.email);
+      }
+      toast.error(msg);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleResend = async () => {
+    if (!unverifiedEmail) return;
+    setResendLoading(true);
+    try {
+      await authService.resendVerification(unverifiedEmail);
+      toast.success('Verification email sent! Check your inbox.');
+    } catch (err) {
+      toast.error(err.message || 'Could not resend. Please try again.');
+    } finally {
+      setResendLoading(false);
     }
   };
 
@@ -176,6 +198,31 @@ const LoginPage = () => {
               )}
             </button>
           </form>
+
+          {/* Unverified email banner */}
+          {unverifiedEmail && (
+            <motion.div
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mt-4 rounded-xl p-4"
+              style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)' }}
+            >
+              <p className="text-sm font-medium mb-2" style={{ color: '#f59e0b' }}>
+                ⚠️ Email not verified
+              </p>
+              <p className="text-xs text-muted mb-3">
+                Your account exists but email hasn't been verified. Check your inbox or resend the email.
+              </p>
+              <button
+                onClick={handleResend}
+                disabled={resendLoading}
+                className="btn btn-sm w-full text-xs"
+                style={{ background: 'rgba(245,158,11,0.15)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.3)' }}
+              >
+                {resendLoading ? <><RefreshCw size={12} className="animate-spin" /> Sending…</> : <><RefreshCw size={12} /> Resend Verification Email</>}
+              </button>
+            </motion.div>
+          )}
 
           {/* Demo credentials */}
           <div

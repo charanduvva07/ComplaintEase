@@ -16,6 +16,7 @@ const LoginPage           = lazy(() => import('./pages/auth/LoginPage'));
 const RegisterPage        = lazy(() => import('./pages/auth/RegisterPage'));
 const ForgotPasswordPage  = lazy(() => import('./pages/auth/ForgotPasswordPage'));
 const ResetPasswordPage   = lazy(() => import('./pages/auth/ResetPasswordPage'));
+const VerifyEmailPage     = lazy(() => import('./pages/auth/VerifyEmailPage'));
 
 const UserDashboard       = lazy(() => import('./pages/user/UserDashboard'));
 const SubmitComplaint     = lazy(() => import('./pages/user/SubmitComplaint'));
@@ -124,6 +125,8 @@ const App = () => (
                   <Route path="/register"               element={<RegisterPage />} />
                   <Route path="/forgot-password"        element={<ForgotPasswordPage />} />
                   <Route path="/reset-password/:token"  element={<ResetPasswordPage />} />
+                  {/* EMAIL VERIFICATION — was missing, caused 404 on email links */}
+                  <Route path="/verify-email/:token"    element={<VerifyEmailPage />} />
 
                   {/* User Routes */}
                   <Route element={<DashboardLayout />}>

@@ -9,6 +9,7 @@ const {
   forgotPassword,
   resetPassword,
   logout,
+  resendVerification,
 } = require('../controllers/authController');
 const { protect } = require('../middlewares/auth');
 
@@ -55,6 +56,13 @@ router.post(
   '/reset-password/:token',
   validate([body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters')]),
   resetPassword
+);
+
+// Resend email verification link
+router.post(
+  '/resend-verification',
+  validate([body('email').isEmail().normalizeEmail().withMessage('Please provide a valid email')]),
+  resendVerification
 );
 
 module.exports = router;

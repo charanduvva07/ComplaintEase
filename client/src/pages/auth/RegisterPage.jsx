@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Eye, EyeOff, Zap, Mail, Lock, User, UserPlus } from 'lucide-react';
+import { Eye, EyeOff, Zap, Mail, Lock, User, UserPlus, CheckCircle, RefreshCw } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { authService } from '../../services/services';
 import toast from 'react-hot-toast';
 
 const schema = z.object({
@@ -26,6 +27,8 @@ const RegisterPage = () => {
   const navigate = useNavigate();
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [registeredEmail, setRegisteredEmail] = useState(null); // success state
+  const [resendLoading, setResendLoading] = useState(false);
 
   const { register, handleSubmit, watch, formState: { errors } } = useForm({
     resolver: zodResolver(schema),
@@ -53,14 +56,69 @@ const RegisterPage = () => {
     setIsLoading(true);
     try {
       await registerUser({ name: data.name, email: data.email, password: data.password });
-      toast.success('Account created! Please check your email to verify your account.');
-      navigate('/login');
+      // Show success state — don't redirect immediately, show email instructions
+      setRegisteredEmail(data.email);
     } catch (err) {
       toast.error(err.message || 'Registration failed. Please try again.');
     } finally {
       setIsLoading(false);
     }
   };
+
+  const handleResend = async () => {
+    if (!registeredEmail) return;
+    setResendLoading(true);
+    try {
+      await authService.resendVerification(registeredEmail);
+      toast.success('Verification email resent! Please check your inbox.');
+    } catch (err) {
+      toast.error(err.message || 'Could not resend email. Please try again.');
+    } finally {
+      setResendLoading(false);
+    }
+  };
+
+  // Success state: show after registration
+  if (registeredEmail) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4" style={{ background: 'rgb(var(--bg-base))' }}>
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="card w-full max-w-md p-10 text-center"
+        >
+          <div className="w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-6"
+            style={{ background: 'rgba(34,197,94,0.1)' }}>
+            <CheckCircle size={40} style={{ color: '#22c55e' }} />
+          </div>
+          <h1 className="text-2xl font-bold mb-2">Account Created! 🎉</h1>
+          <p className="text-muted text-sm mb-6">
+            We've sent a verification email to:
+          </p>
+          <div className="rounded-xl p-3 mb-6" style={{ background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.2)' }}>
+            <p className="font-semibold text-sm" style={{ color: 'rgb(99,102,241)' }}>
+              📧 {registeredEmail}
+            </p>
+          </div>
+          <p className="text-sm text-muted mb-6">
+            Click the verification link in the email to activate your account. Check your spam folder if you don't see it.
+          </p>
+          <div className="space-y-3">
+            <button
+              onClick={handleResend}
+              disabled={resendLoading}
+              className="btn btn-secondary w-full"
+            >
+              {resendLoading ? <><RefreshCw size={15} className="animate-spin" /> Sending…</> : <><RefreshCw size={15} /> Resend Verification Email</>}
+            </button>
+            <Link to="/login" className="btn btn-primary w-full">
+              Go to Login
+            </Link>
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4" style={{ background: 'rgb(var(--bg-base))' }}>

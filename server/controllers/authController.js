@@ -4,6 +4,21 @@ const asyncHandler = require('express-async-handler');
 const User = require('../models/User');
 const { sendEmail, emailTemplates } = require('../services/emailService');
 
+// ── Safety: warn when CLIENT_URL is localhost in production ──────────────────
+// This is the #1 cause of broken email links in production.
+const getClientUrl = () => {
+  const url = process.env.CLIENT_URL || 'http://localhost:5173';
+  if (process.env.NODE_ENV === 'production' && url.includes('localhost')) {
+    console.error(
+      '❌ CRITICAL: CLIENT_URL is set to localhost in production!\n' +
+      '   Email verification and password reset links will NOT work.\n' +
+      '   Set CLIENT_URL to your Vercel URL in Render environment variables.\n' +
+      `   Current value: ${url}`
+    );
+  }
+  return url;
+};
+
 const generateToken = (id, rememberMe = false) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, {
     expiresIn: rememberMe ? '30d' : process.env.JWT_EXPIRE || '7d',
@@ -35,7 +50,7 @@ const register = asyncHandler(async (req, res) => {
   // on Render (common on cold starts), the 30s axios timeout fired and the
   // frontend showed "Something went wrong" — but the account WAS created.
   // Now: response is sent immediately; email is sent in background.
-  const verifyUrl = `${process.env.CLIENT_URL}/verify-email/${verificationToken}`;
+  const verifyUrl = `${getClientUrl()}/verify-email/${verificationToken}`;
   const { subject, html } = emailTemplates.verifyEmail(user.name, verifyUrl);
   // No await — intentional fire-and-forget
   sendEmail({ to: user.email, subject, html }).catch((err) => {
@@ -172,7 +187,7 @@ const forgotPassword = asyncHandler(async (req, res) => {
   const resetToken = user.getResetPasswordToken();
   await user.save();
 
-  const resetUrl = `${process.env.CLIENT_URL}/reset-password/${resetToken}`;
+  const resetUrl = `${getClientUrl()}/reset-password/${resetToken}`;
   const { subject, html } = emailTemplates.resetPassword(user.name, resetUrl);
 
   // Non-blocking — password reset email shouldn't block the response either
@@ -219,6 +234,52 @@ const resetPassword = asyncHandler(async (req, res) => {
 });
 
 // ────────────────────────────────────────────────────────────────────────────
+// @desc    Resend email verification
+// @route   POST /api/auth/resend-verification
+// @access  Public
+// ────────────────────────────────────────────────────────────────────────────
+const resendVerification = asyncHandler(async (req, res) => {
+  const { email } = req.body;
+
+  if (!email) {
+    res.status(400);
+    throw new Error('Email is required');
+  }
+
+  // Always return success — don't reveal if email exists
+  const user = await User.findOne({ email });
+
+  if (!user) {
+    return res.json({
+      success: true,
+      message: 'If that account exists and is unverified, a new email has been sent.',
+    });
+  }
+
+  if (user.isVerified) {
+    return res.json({
+      success: true,
+      message: 'Your email is already verified. You can log in normally.',
+    });
+  }
+
+  // Generate fresh token (previous one may have expired)
+  const verificationToken = user.getEmailVerificationToken();
+  await user.save();
+
+  const verifyUrl = `${getClientUrl()}/verify-email/${verificationToken}`;
+  const { subject, html } = emailTemplates.verifyEmail(user.name, verifyUrl);
+  sendEmail({ to: user.email, subject, html }).catch((err) => {
+    console.error(`Resend verification email failed for ${user.email}: ${err.message}`);
+  });
+
+  res.json({
+    success: true,
+    message: 'If that account exists and is unverified, a new email has been sent.',
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
 // @desc    Logout
 // @route   POST /api/auth/logout
 // @access  Private
@@ -227,4 +288,4 @@ const logout = asyncHandler(async (req, res) => {
   res.json({ success: true, message: 'Logged out successfully' });
 });
 
-module.exports = { register, login, verifyEmail, getMe, forgotPassword, resetPassword, logout };
+module.exports = { register, login, verifyEmail, getMe, forgotPassword, resetPassword, logout, resendVerification };
