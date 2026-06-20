@@ -15,6 +15,7 @@ const getIo = (req) => req.app.get('io');
 // @access  Private (User)
 // ────────────────────────────────────────────────────────────────────────────
 const submitComplaint = asyncHandler(async (req, res) => {
+  
   const { title, description, category, department, location, urgency } = req.body;
 
   // Validate department exists
@@ -61,7 +62,7 @@ const submitComplaint = asyncHandler(async (req, res) => {
   const [admins] = await Promise.all([
     User.find({ role: 'admin', isActive: true }, '_id').lean(),
     User.updateOne({ _id: req.user._id }, { $inc: { 'stats.totalComplaints': 1 } }),
-    Department.updateOne({ _id: department }, { $inc: { 'performance.totalComplaints': 1 } }),
+    Department .updateOne({ _id: department }, { $inc: { 'performance.totalComplaints': 1 } }),
   ]);
 
   // ── FIX: Create admin notifications in parallel (was sequential loop) ────
